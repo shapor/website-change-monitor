@@ -6,4 +6,4 @@ gcloud functions deploy website-change-monitor \
   --allow-unauthenticated \
   --entry-point check_website \
   --source ./gcf/ \
-  --set-env-vars SENDGRID_SENDER_EMAIL=change-notifier@shapor.com,RECIPIENT_EMAIL=shapro@gmail.com,BUCKET_NAME=website-differ
+  --set-env-vars SENDGRID_SENDER_EMAIL=change-notifier@shapor.com,RECIPIENT_EMAIL=shapor@gmail.com,BUCKET_NAME=website-differ
