@@ -126,6 +126,45 @@ If you encounter issues:
 3. Verify that the Google Cloud Storage bucket exists and is accessible.
 4. Check that the SendGrid API key secret is properly set up in Secret Manager and accessible to the function.
 
+## How It Works
+
+The Website Change Monitor uses a combination of cloud services and hashing algorithms to efficiently detect and report changes in web content. Here's a breakdown of the process:
+
+1. URL Hashing:
+   - When a URL is submitted for monitoring, it's first hashed using MD5.
+   - The hash function is: `url_hash = hashlib.md5(target_url.encode()).hexdigest()`
+   - This URL hash serves as a unique identifier for the website in our storage system.
+
+2. Content Fetching and Parsing:
+   - The function fetches the content of the specified URL.
+   - It then uses BeautifulSoup to parse the HTML and extract the main content (typically the `<main>` or `<body>` element).
+
+3. Content Storage:
+   - The parsed content is hashed using MD5: `content_hash = hashlib.md5(content.encode()).hexdigest()`
+   - A unique blob name is created in the format: `{url_hash}_{content_hash}`
+   - This blob is stored in Google Cloud Storage, allowing for efficient comparison and storage of multiple versions.
+
+4. Change Detection:
+   - When checking for changes, the function retrieves the latest stored content for the URL.
+   - It compares this stored content with the newly fetched and parsed content.
+   - If there's a difference, it's considered a change.
+
+5. Notification:
+   - If a change is detected, the function sends an email notification via SendGrid.
+   - The notification includes both the old and new content for comparison.
+
+6. Scheduling:
+   - Google Cloud Scheduler is used to periodically trigger the function.
+   - Each scheduled job corresponds to a specific URL to be monitored.
+
+This approach allows for:
+- Efficient storage and retrieval of web content
+- Quick comparison between versions
+- Scalability to monitor multiple websites
+- Secure handling of sensitive information (like API keys)
+
+The use of content hashing ensures that only unique versions of a page are stored, saving storage space and allowing for easy identification of changes.
+
 ## Contributing
 
 Contributions to improve the project are welcome. Please follow the standard fork-and-pull request workflow.
