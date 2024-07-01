@@ -3,4 +3,5 @@ beautifulsoup4
 functions-framework 
 google-cloud-storage
 sendgrid
+tenacity
 
