@@ -54,9 +54,10 @@ def send_notification(url, old_content, new_content):
 
 # --- Cloud Storage Functions ---
 def load_from_storage(url_hash):
-    blob = bucket.blob(url_hash)
-    if blob.exists():
-        content = blob.download_as_text()
+    blobs = list(bucket.list_blobs(prefix=f"{url_hash}_"))
+    if blobs:
+        latest_blob = max(blobs, key=lambda b: b.updated)
+        content = latest_blob.download_as_text()
         logger.info(f"Loaded previous content from Cloud Storage")
         return content
     else:
@@ -64,7 +65,9 @@ def load_from_storage(url_hash):
         return ""
 
 def save_to_storage(url_hash, content):
-    blob = bucket.blob(url_hash)
+    content_hash = hashlib.md5(content.encode()).hexdigest()
+    blob_name = f"{url_hash}_{content_hash}"
+    blob = bucket.blob(blob_name)
     blob.upload_from_string(content)
     logger.info(f"Saved new content to Cloud Storage")
 
@@ -89,9 +92,13 @@ def check_website(request):
         new_content = parse_content(new_content_raw)
         
         if old_content != new_content:
-            send_notification(target_url, old_content, new_content)
-            save_to_storage(url_hash, new_content)
-            return json.dumps({"status": "change_detected"}), 200
+            if old_content:  # Not the first check
+                send_notification(target_url, old_content, new_content)
+                save_to_storage(url_hash, new_content)
+                return json.dumps({"status": "change_detected"}), 200
+            else:  # First time checking this URL
+                save_to_storage(url_hash, new_content)
+                return json.dumps({"status": "initial_check"}), 200
         else:
             logger.info("No changes detected.")
             return json.dumps({"status": "no_change"}), 200
