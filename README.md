@@ -172,19 +172,65 @@ When using Pushover for notifications, you can set the priority of the message. 
 - `1`: High priority. Bypasses quiet hours.
 - `2`: Emergency priority. Requires user acknowledgment.
 
-To set the priority, include the `push_priority` field in your request body. For example:
+To set the priority, include it in the `push_params` object in your request body. For example:
 
 ```json
 {
   "url": "https://www.example.com/page-to-monitor",
   "method": ["push"],
-  "push_priority": 1
+  "push_params": {
+    "priority": 1
+  }
 }
 ```
 
 If not specified, the default priority (0) will be used.
 
-Note: Use emergency priority (2) sparingly, as it repeatedly notifies the user until acknowledged.
+#### Using Priority 2 (Emergency)
+
+Priority 2 is for emergency notifications and requires special handling. When using priority 2:
+
+1. You must include `retry` and `expire` parameters in your `push_params`.
+2. `retry` specifies how often (in seconds) the Pushover servers will send the same notification to the user. The minimum value is 30 seconds.
+3. `expire` specifies how long (in seconds) the notification will continue to be retried. The maximum value is 10800 seconds (3 hours).
+
+Here's an example of how to set up a priority 2 notification:
+
+```json
+{
+  "url": "https://www.example.com/page-to-monitor",
+  "method": ["push"],
+  "push_params": {
+    "priority": 2,
+    "retry": 60,
+    "expire": 3600,
+    "sound": "siren"
+  }
+}
+```
+
+In this example:
+- The notification is set to emergency priority (2).
+- It will retry every 60 seconds.
+- It will expire after 3600 seconds (1 hour) if not acknowledged.
+- It will use the "siren" sound for maximum attention.
+
+To use this in a Cloud Scheduler job, your `--message-body` would look like this:
+
+```bash
+--message-body '{
+  "url": "https://www.example.com/page-to-monitor",
+  "method": ["push"],
+  "push_params": {
+    "priority": 2,
+    "retry": 60,
+    "expire": 3600,
+    "sound": "siren"
+  }
+}'
+```
+
+Note: Use emergency priority (2) sparingly, as it repeatedly notifies the user until acknowledged and can be disruptive. It's intended for critical alerts that require immediate attention.
 
 ## Monitoring and Logs
 
