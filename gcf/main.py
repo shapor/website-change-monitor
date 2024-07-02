@@ -62,30 +62,30 @@ def send_email_notification(url, old_content, new_content):
         return False
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-def send_push_notification(url, old_content, new_content, priority=0):
+def send_push_notification(url, old_content, new_content, push_params):
     message = f"Website Content Changed: {url}\n\nOld Content:\n{old_content[:1000]}...\n\nNew Content:\n{new_content[:1000]}..."
     data = {
         "token": PUSHOVER_APP_TOKEN,
         "user": PUSHOVER_USER_KEY,
         "message": message,
         "title": f"Content Change Detected: {url}",
-        "priority": priority
+        **push_params  # Include all push parameters
     }
     try:
         response = requests.post("https://api.pushover.net/1/messages.json", data=data)
         response.raise_for_status()
-        logger.info(f"Push notification sent successfully for {url} with priority {priority}")
+        logger.info(f"Push notification sent successfully for {url} with params: {push_params}")
         return True
     except Exception as e:
         logger.error(f"Error sending Pushover notification for {url}: {e}")
         return False
 
-def send_notifications(url, old_content, new_content, methods, push_priority=0):
+def send_notifications(url, old_content, new_content, methods, push_params):
     sent_notifications = []
     for method in methods:
         if method == 'email' and send_email_notification(url, old_content, new_content):
             sent_notifications.append('email')
-        elif method == 'push' and send_push_notification(url, old_content, new_content, priority=push_priority):
+        elif method == 'push' and send_push_notification(url, old_content, new_content, push_params):
             sent_notifications.append('push')
     return sent_notifications
 
@@ -112,16 +112,16 @@ def save_to_storage(url_hash, content):
 @http
 def check_website(request):
     try:
-        # Parse the request to get the target URL, notification method, and push priority
+        # Parse the request to get the target URL, notification method, and push parameters
         if request.method == 'GET':
             target_url = request.args.get('url')
             notification_methods = request.args.getlist('method')
-            push_priority = int(request.args.get('push_priority', 0))
+            push_params = json.loads(request.args.get('push_params', '{}'))
         elif request.method == 'POST':
             request_json = request.get_json(silent=True)
             target_url = request_json and request_json.get('url')
             notification_methods = request_json and request_json.get('method', [])
-            push_priority = int(request_json and request_json.get('push_priority', 0))
+            push_params = request_json and request_json.get('push_params', {})
             if isinstance(notification_methods, str):
                 notification_methods = [notification_methods]
         
@@ -141,7 +141,7 @@ def check_website(request):
         if old_content != new_content:
             save_to_storage(url_hash, new_content)
             if old_content:  # Not the first check
-                sent_notifications = send_notifications(target_url, old_content, new_content, notification_methods, push_priority) if AVAILABLE_METHODS else []
+                sent_notifications = send_notifications(target_url, old_content, new_content, notification_methods, push_params) if AVAILABLE_METHODS else []
                 return json.dumps({
                     "status": "change_detected",
                     "notification_sent": bool(sent_notifications),
