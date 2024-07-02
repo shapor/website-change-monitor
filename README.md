@@ -95,6 +95,28 @@ The function supports flexible notification options:
 
 The function automatically detects which notification methods are available based on the configured environment variables.
 
+### Setting up Pushover
+
+Pushover is a service that makes it easy to get real-time notifications on your phone, tablet, or desktop. Here's how to set it up for this project:
+
+1. Sign up for a Pushover account at https://pushover.net/
+2. After logging in, you'll see your User Key on the dashboard. This is your `PUSHOVER_USER_KEY`.
+3. Scroll down to "Your Applications" and click "Create an Application/API Token".
+4. Fill in the form:
+   - Name: "Website Change Monitor" (or any name you prefer)
+   - Type: Application
+   - Description: "Monitors websites for changes"
+   - URL: (Optional) You can leave this blank
+   - Icon: (Optional) You can upload an icon if you want
+5. After creating the application, you'll see the API Token. This is your `PUSHOVER_API_TOKEN`.
+
+To receive notifications:
+1. Download the Pushover mobile app from your device's app store (iOS App Store or Google Play Store).
+2. Log in to the app using your Pushover account.
+3. (Optional) On desktop, you can use their browser extensions or desktop clients available at https://pushover.net/clients
+
+Now, when the Website Change Monitor detects a change, it will send a push notification to all your registered devices.
+
 ## Deployment
 
 To deploy the function and set up the Cloud Scheduler job, run the `deploy.sh` script:
@@ -148,6 +170,10 @@ If you encounter issues:
 3. Verify that the Google Cloud Storage bucket exists and is accessible.
 4. Check that the SendGrid API key and Pushover tokens are properly set up in Secret Manager and accessible to the function.
 5. Verify that the notification methods specified in the Cloud Scheduler job match the configured environment variables.
+6. For Pushover issues:
+   - Ensure you've entered the correct API Token and User Key in Secret Manager.
+   - Check that you've installed the Pushover app on your device and logged in.
+   - Verify your device is connected to the internet and can receive push notifications.
 
 ## How It Works
 
@@ -173,8 +199,9 @@ The Website Change Monitor uses a combination of cloud services and hashing algo
    - If there's a difference, it's considered a change.
 
 5. Notification:
-   - If a change is detected, the function sends an email notification via SendGrid.
-   - The notification includes both the old and new content for comparison.
+   - If a change is detected, the function sends notifications based on the configured methods.
+   - For email (SendGrid), it sends an HTML email with both old and new content for comparison.
+   - For push notifications (Pushover), it sends a brief message to all registered devices.
 
 6. Scheduling:
    - Google Cloud Scheduler is used to periodically trigger the function.
@@ -187,6 +214,21 @@ This approach allows for:
 - Secure handling of sensitive information (like API keys)
 
 For notifications, the function checks which methods are available based on the configured environment variables. It can send notifications via email (using SendGrid), push notifications (using Pushover), both, or neither. The notification method can also be specified on a per-request basis in the Cloud Scheduler job configuration.
+
+### Pushover Notification Process
+
+When Pushover is configured and a change is detected:
+
+1. The function prepares a message containing the URL of the changed website and a brief summary of the change.
+2. It sends a POST request to the Pushover API (https://api.pushover.net/1/messages.json) with the following data:
+   - `token`: The Pushover API Token for your application
+   - `user`: Your Pushover User Key
+   - `message`: The prepared message about the detected change
+   - `title`: A title for the notification (e.g., "Website Change Detected")
+3. Pushover's servers receive this request and send push notifications to all devices registered to your Pushover account.
+4. Users receive an instant notification on their devices, which they can tap to view more details.
+
+This process ensures that you're immediately notified of any changes to the websites you're monitoring, allowing for quick action if needed.
 
 ## Contributing
 
