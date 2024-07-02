@@ -53,7 +53,7 @@ The following environment variables are used by the function:
 - `SENDGRID_API_KEY`: Your SendGrid API key (stored in Secret Manager)
 - `SENDGRID_SENDER_EMAIL`: The email address to send notifications from
 - `RECIPIENT_EMAIL`: The email address to send notifications to
-- `PUSHOVER_API_TOKEN`: Your Pushover API Token (stored in Secret Manager)
+- `PUSHOVER_APP_TOKEN`: Your Pushover API Token (stored in Secret Manager)
 - `PUSHOVER_USER_KEY`: Your Pushover User Key (stored in Secret Manager)
 - `BUCKET_NAME`: The name of your Google Cloud Storage bucket
 
@@ -89,7 +89,7 @@ Replace `YOUR_PROJECT_ID` with your actual Google Cloud project ID.
 The function supports flexible notification options:
 
 - Email only: Set `SENDGRID_API_KEY`, `SENDGRID_SENDER_EMAIL`, and `RECIPIENT_EMAIL`
-- Pushover only: Set `PUSHOVER_API_TOKEN` and `PUSHOVER_USER_KEY`
+- Pushover only: Set `PUSHOVER_APP_TOKEN` and `PUSHOVER_USER_KEY`
 - Both: Set all of the above
 - Neither: Don't set any of the above (function will only update storage, no notifications)
 
@@ -108,7 +108,7 @@ Pushover is a service that makes it easy to get real-time notifications on your 
    - Description: "Monitors websites for changes"
    - URL: (Optional) You can leave this blank
    - Icon: (Optional) You can upload an icon if you want
-5. After creating the application, you'll see the API Token. This is your `PUSHOVER_API_TOKEN`.
+5. After creating the application, you'll see the API Token. This is your `PUSHOVER_APP_TOKEN`.
 
 To receive notifications:
 1. Download the Pushover mobile app from your device's app store (iOS App Store or Google Play Store).
@@ -129,11 +129,11 @@ This script contains the necessary `gcloud` commands to deploy the function, set
 
 ## Usage
 
-Once deployed and scheduled, the function will automatically check the specified website at the set interval.
+Once deployed and scheduled, the function needs to be called periodically in order to check the site and send notifications if there are changes.
 
-### Monitoring a Different Website
+### Configuring site(s) to be monitored
 
-To monitor a different website, you need to update or create a new Cloud Scheduler job. Here's an example command:
+To a website, you need to update or create a new Cloud Scheduler job. Here's an example command:
 
 ```bash
 gcloud scheduler jobs create http new-website-monitor \
@@ -142,7 +142,11 @@ gcloud scheduler jobs create http new-website-monitor \
   --uri "https://REGION-PROJECT_ID.cloudfunctions.net/website-change-monitor" \
   --http-method POST \
   --headers "Content-Type=application/json" \
-  --message-body '{"url": "https://www.example.com/page-to-monitor", "method": ["email", "push"]}' \
+  --message-body '{
+    "url": "https://www.example.com/page-to-monitor",
+    "method": ["email", "push"],
+    "push_priority": 1
+  }' \
   --time-zone "America/Los_Angeles"
 ```
 
@@ -153,9 +157,34 @@ Replace the following:
 - `"*/5 * * * *"`: The schedule (every 5 minutes in this example)
 - `"https://www.example.com/page-to-monitor"`: The URL you want to monitor
 - `["email", "push"]`: The notification methods to use (can be `["email"]`, `["push"]`, `["email", "push"]`, or omitted)
+- `"push_priority": 1`: The priority for Pushover notifications (optional, see below for details)
 - `"America/Los_Angeles"`: Your preferred timezone
 
 You can create multiple scheduler jobs to monitor different websites.
+
+### Pushover Notification Priority
+
+When using Pushover for notifications, you can set the priority of the message. The priority levels are:
+
+- `-2`: Lowest priority. No notification or sound.
+- `-1`: Low priority. No sound or vibration.
+- `0`: Normal priority (default).
+- `1`: High priority. Bypasses quiet hours.
+- `2`: Emergency priority. Requires user acknowledgment.
+
+To set the priority, include the `push_priority` field in your request body. For example:
+
+```json
+{
+  "url": "https://www.example.com/page-to-monitor",
+  "method": ["push"],
+  "push_priority": 1
+}
+```
+
+If not specified, the default priority (0) will be used.
+
+Note: Use emergency priority (2) sparingly, as it repeatedly notifies the user until acknowledged.
 
 ## Monitoring and Logs
 

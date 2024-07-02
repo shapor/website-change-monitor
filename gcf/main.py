@@ -5,10 +5,10 @@ from functions_framework import http
 from google.cloud import storage
 import hashlib
 import logging
-from tenacity import retry, stop_after_attempt, wait_exponential
-import json
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+from tenacity import retry, stop_after_attempt, wait_exponential
+import json
 
 # --- Configuration ---
 SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY')
@@ -62,29 +62,30 @@ def send_email_notification(url, old_content, new_content):
         return False
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-def send_push_notification(url, old_content, new_content):
+def send_push_notification(url, old_content, new_content, priority=0):
     message = f"Website Content Changed: {url}\n\nOld Content:\n{old_content[:1000]}...\n\nNew Content:\n{new_content[:1000]}..."
     data = {
         "token": PUSHOVER_APP_TOKEN,
         "user": PUSHOVER_USER_KEY,
         "message": message,
-        "title": f"Content Change Detected: {url}"
+        "title": f"Content Change Detected: {url}",
+        "priority": priority
     }
     try:
         response = requests.post("https://api.pushover.net/1/messages.json", data=data)
         response.raise_for_status()
-        logger.info(f"Push notification sent successfully for {url}")
+        logger.info(f"Push notification sent successfully for {url} with priority {priority}")
         return True
     except Exception as e:
         logger.error(f"Error sending Pushover notification for {url}: {e}")
         return False
 
-def send_notifications(url, old_content, new_content, methods):
+def send_notifications(url, old_content, new_content, methods, push_priority=0):
     sent_notifications = []
     for method in methods:
         if method == 'email' and send_email_notification(url, old_content, new_content):
             sent_notifications.append('email')
-        elif method == 'push' and send_push_notification(url, old_content, new_content):
+        elif method == 'push' and send_push_notification(url, old_content, new_content, priority=push_priority):
             sent_notifications.append('push')
     return sent_notifications
 
@@ -111,14 +112,16 @@ def save_to_storage(url_hash, content):
 @http
 def check_website(request):
     try:
-        # Parse the request to get the target URL and notification method
+        # Parse the request to get the target URL, notification method, and push priority
         if request.method == 'GET':
             target_url = request.args.get('url')
             notification_methods = request.args.getlist('method')
+            push_priority = int(request.args.get('push_priority', 0))
         elif request.method == 'POST':
             request_json = request.get_json(silent=True)
             target_url = request_json and request_json.get('url')
             notification_methods = request_json and request_json.get('method', [])
+            push_priority = int(request_json and request_json.get('push_priority', 0))
             if isinstance(notification_methods, str):
                 notification_methods = [notification_methods]
         
@@ -138,7 +141,7 @@ def check_website(request):
         if old_content != new_content:
             save_to_storage(url_hash, new_content)
             if old_content:  # Not the first check
-                sent_notifications = send_notifications(target_url, old_content, new_content, notification_methods) if AVAILABLE_METHODS else []
+                sent_notifications = send_notifications(target_url, old_content, new_content, notification_methods, push_priority) if AVAILABLE_METHODS else []
                 return json.dumps({
                     "status": "change_detected",
                     "notification_sent": bool(sent_notifications),
@@ -149,6 +152,9 @@ def check_website(request):
         else:
             logger.info("No changes detected.")
             return json.dumps({"status": "no_change", "notification_sent": False}), 200
+    except ValueError as ve:
+        logger.error(f"Value error: {ve}")
+        return json.dumps({"status": "error", "message": str(ve)}), 400
     except Exception as e:
         logger.error(f"Error checking website: {e}")
         return json.dumps({"status": "error", "message": str(e)}), 500
