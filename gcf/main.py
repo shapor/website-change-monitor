@@ -1,6 +1,6 @@
 import os
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 from functions_framework import http
 from google.cloud import storage
 import hashlib
@@ -9,6 +9,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from tenacity import retry, stop_after_attempt, wait_exponential
 import json
+import re
 
 # --- Configuration ---
 SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY')
@@ -16,7 +17,7 @@ SENDGRID_SENDER_EMAIL = os.environ.get('SENDGRID_SENDER_EMAIL')
 RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL')
 PUSHOVER_APP_TOKEN = os.environ.get('PUSHOVER_APP_TOKEN')
 PUSHOVER_USER_KEY = os.environ.get('PUSHOVER_USER_KEY')
-BUCKET_NAME = os.environ['BUCKET_NAME']
+BUCKET_NAME = os.environ.get('BUCKET_NAME')
 
 # Determine available notification methods
 AVAILABLE_METHODS = []
@@ -39,8 +40,23 @@ def fetch_website(url):
     response.raise_for_status()
     return response.text
 
-def parse_content(html):
+def parse_content(html, strip=False):
     soup = BeautifulSoup(html, 'html.parser')
+
+    if strip:
+        # Remove tags
+        for tag in soup.find_all(True):
+            tag.attrs = {}
+
+        # Remove all comments
+        for comment in soup.find_all(text=lambda text: isinstance(text, Comment)):
+            comment.extract()
+
+        # Remove all script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+
+    # Get the main content
     main_content = soup.find('main') or soup.find('body')
     return str(main_content)
 
@@ -117,27 +133,29 @@ def check_website(request):
             target_url = request.args.get('url')
             notification_methods = request.args.getlist('method')
             push_params = json.loads(request.args.get('push_params', '{}'))
+            strip_content = request.args.get('strip_content', 'false').lower() == 'true'
         elif request.method == 'POST':
             request_json = request.get_json(silent=True)
             target_url = request_json and request_json.get('url')
             notification_methods = request_json and request_json.get('method', [])
             push_params = request_json and request_json.get('push_params', {})
+            strip_content = request_json and request_json.get('strip_content', False)
             if isinstance(notification_methods, str):
                 notification_methods = [notification_methods]
-        
+
         if not target_url:
             return json.dumps({"status": "error", "message": "No target URL provided"}), 400
-        
+
         # If no methods specified or invalid methods, default to all available methods
         if not notification_methods or not set(notification_methods).issubset(AVAILABLE_METHODS):
             notification_methods = AVAILABLE_METHODS
-        
+
         url_hash = hashlib.md5(target_url.encode()).hexdigest()
-        
+
         old_content = load_from_storage(url_hash)
         new_content_raw = fetch_website(target_url)
-        new_content = parse_content(new_content_raw)
-        
+        new_content = parse_content(new_content_raw, strip_content)
+
         if old_content != new_content:
             save_to_storage(url_hash, new_content)
             if old_content:  # Not the first check

@@ -232,6 +232,125 @@ To use this in a Cloud Scheduler job, your `--message-body` would look like this
 
 Note: Use emergency priority (2) sparingly, as it repeatedly notifies the user until acknowledged and can be disruptive. It's intended for critical alerts that require immediate attention.
 
+## Content Stripping Functionality
+
+The Website Change Monitor now includes an optional content stripping feature. This feature allows you to remove HTML tags and attributes from the monitored content before comparison, which can be useful for focusing on text changes and reducing false positives from minor HTML structure modifications.
+
+### How it works
+
+- The content stripping is disabled by default to maintain backwards compatibility.
+- When enabled, it removes HTML tags, attributes, comments, and script/style elements from the parsed content.
+- The stripped content is then used for comparison and storage.
+
+### Enabling Content Stripping
+
+To enable content stripping, you need to include the `strip_content` parameter in your request:
+
+For GET requests:
+```
+?strip_content=true
+```
+
+For POST requests (in the JSON body):
+```json
+{
+  "url": "https://www.example.com",
+  "strip_content": true
+}
+```
+
+### Configuring in Cloud Scheduler
+
+To enable content stripping in a Cloud Scheduler job, include the `strip_content` parameter in the message body:
+
+```bash
+gcloud scheduler jobs create http new-website-monitor \
+  --location us-central1 \
+  --schedule "*/5 * * * *" \
+  --uri "https://REGION-PROJECT_ID.cloudfunctions.net/website-change-monitor" \
+  --http-method POST \
+  --headers "Content-Type=application/json" \
+  --message-body '{
+    "url": "https://www.example.com/page-to-monitor",
+    "method": ["email", "push"],
+    "strip_content": true
+  }' \
+  --time-zone "America/Los_Angeles"
+```
+
+## Testing Content Stripping
+
+You can test the content stripping functionality locally using the provided `parse_content_test.py` script and some command-line tools. Here's how:
+
+1. First, make sure you have the `parse_content_test.py` script in your current directory.
+
+2. Fetch a webpage you want to test:
+
+   ```bash
+   wget https://example.com
+   ```
+
+3. Use the `parse_content_test.py` script to process the HTML file:
+
+   ```bash
+   python parse_content_test.py index.html > content1
+   ```
+
+4. Fetch the webpage again (to simulate a potential change):
+
+   ```bash
+   wget -O index.html.new https://example.com
+   ```
+
+5. Process the new HTML file:
+
+   ```bash
+   python parse_content_test.py index.html.new > content2
+   ```
+
+6. Compare the two processed files:
+
+   ```bash
+   diff content1 content2
+   ```
+
+7. You can also check the MD5 hashes of the files to quickly see if they're different:
+
+   ```bash
+   md5sum content1 content2
+   ```
+
+   or on macOS:
+
+   ```bash
+   md5 content1 content2
+   ```
+
+This process allows you to see how the content stripping works and how it might affect change detection for a given website.
+
+### Example
+
+Here's an example of how you might use these commands:
+
+```bash
+wget shapor.com
+python parse_content_test.py index.html > shapor1
+wget -O index.html.new shapor.com
+python parse_content_test.py index.html.new > shapor2
+diff shapor1 shapor2
+md5 shapor1 shapor2
+```
+
+This sequence of commands:
+1. Downloads the shapor.com homepage
+2. Processes it with the content stripping script
+3. Downloads the homepage again (simulating a potential change)
+4. Processes the new version
+5. Compares the two processed versions
+6. Calculates MD5 hashes for a quick comparison
+
+By running these commands and examining the output, you can get a sense of how the content stripping affects the stored content and change detection for your monitored websites.
+
 ## Monitoring and Logs
 
 You can monitor the function's executions and view logs in the Google Cloud Console under the "Cloud Functions" and "Cloud Logging" sections.
